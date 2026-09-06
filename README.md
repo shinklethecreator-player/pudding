@@ -1,11 +1,32 @@
-# Caramel pudding
+# 蜡皮捏捏 · Cyber Wax Lab
 
-Standalone Vite + vanilla Three.js scene. All dessert geometry is procedural; no downloaded models or textures.
+沿用已有的 Three.js 程序化布丁、焦糖、奶油和樱桃造型，新增完整蜡层与局部揉捏交互。
 
-Run `pnpm install`, then `pnpm dev`. Use `pnpm build` for a static production build.
+## 使用
 
-Edit `src/config.js` to tune the model. Body height, topRadius and bottomRadius control the main silhouette. Caramel radius and waveAmount control its scalloped outline; cream width/height and cherry radius control topping proportions. Camera position controls the viewing direction; distance fits the viewport automatically.
+- 长按甜点：蜡层依次受力、开裂、局部脱落。
+- 按压已露出的布丁或奶油：产生平滑凹痕；持续重压保留塑性形变。
+- 拖动内芯：留下柔软沟槽；奶油更易塑形。
+- 空白处拖动：旋转查看；滚轮缩放。
+- Wax Thickness：0.01–0.20，同时改变厚度、透明度、断裂门槛和碎片冲量。
+- RESET：恢复几何、蜡片、相机和交互状态，不刷新页面，保留当前调节参数。
 
-The body is centered at the origin, with its bottom at negative half-height. Four components remain separate and named. Geometry uses smooth normals and moderate radial resolution. The scene renders on load and resize only.
+## 开发
 
-Visual compromises: cream is deliberately larger than the brief's numeric range to match the supplied image; translucency is approximated by warm lighting and broad highlights. Shadows use an inexpensive softened shadow map. No microtexture or physical subsurface scattering.
+安装依赖：`pnpm install --frozen-lockfile`。
+启动：`pnpm dev`。构建：`pnpm build`。
+数值验证：`node tests/simulation.mjs`。
+
+## 实现
+
+`src/deformation/ClayDeformer.js`：局部坐标下的平滑径向压陷，弹性/塑性位移分离，局部位移场平滑和有界拖拽。弹性缓慢恢复，塑性压痕保留。
+
+`src/wax/WaxFractureSystem.js`：沿原模型三角形表面生成 102 个确定性空间分片，外扩表面和边缘侧壁构成蜡层。局部累计损伤依次显示裂纹、脱落并手动更新重力和旋转。原模型不变。
+
+`src/interaction/PointerInteraction.js`：Pointer Events + Raycaster，只检查甜点对象，完整蜡区域阻挡内芯变形；支持取消、失焦和指针捕获。
+
+## 验证与限制
+
+生产构建与数值模拟测试通过；覆盖蜡层完整性、光线命中、完整蜡阻挡、局部破裂、压痕持久性、厚度映射、局部坐标和精确重置。未做浏览器视觉或真实触摸设备测试。
+
+使用轻量预分片近似，裂纹沿局部分片边缘显示；碎片没有彼此碰撞。焦糖与樱桃保持刚性。大幅揉捏奶油时，樱桃位置不会随内芯移动。并非完整软体或体积守恒模拟。

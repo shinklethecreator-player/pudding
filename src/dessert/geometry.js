@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { CONFIG } from '../config.js';
 
+export const smoothstep = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
 // A smooth closed surface of revolution, with welded vertices and capped poles.
 // Profiles run from bottom center to top center; radiusAt adds gentle fluting.
 export function revolved(profile, radiusAt = (r) => r) {

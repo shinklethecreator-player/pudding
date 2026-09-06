@@ -1,11 +1,31 @@
-import { CONFIG } from '../config.js';
+import { CONFIG, fluteFactor } from '../config.js';
 import { revolved, foodMesh } from './geometry.js';
 
+// A thick glossy cap. Its lobes are locked to the pudding's flutes so it hugs the
+// body instead of floating out past it, and its underside matches the domed top.
 export function createCaramel() {
-  const c = CONFIG.caramel, r = c.radius, h = c.height;
-  const profile = [[0,0],[r*0.7,0],[r*0.96,0],[r*1.015,h*0.27],[r*1.015,h*0.65],[r*0.98,h],[r*0.65,h*1.03],[0,h*1.03]];
-  const geometry = revolved(profile, (radius, y, a) => radius * (1 + c.waveAmount * Math.cos(c.waves*a)));
-  const mesh = foodMesh('caramelMesh', geometry, { color: c.color, roughness: c.roughness, clearcoat: 0.65, clearcoatRoughness: 0.2 });
-  mesh.position.y = CONFIG.pudding.height/2 - h*0.3;
+  const c = CONFIG.caramel, p = CONFIG.pudding;
+  const r = p.topRadius * p.rimRadiusFactor * c.hugFactor;
+  const th = c.height, dome = p.domeHeight;
+  const profile = [
+    [0, dome],
+    [r * 0.34, dome * 0.9],
+    [r * 0.66, dome * 0.58],
+    [r * 0.9, dome * 0.2],
+    [r * 0.985, 0.015],
+    [r, th * 0.42],
+    [r * 0.975, th * 0.86],
+    [r * 0.86, th],
+    [r * 0.6, th + dome * 0.42],
+    [r * 0.3, th + dome * 0.68],
+    [0, th + dome * 0.76],
+  ];
+  const geometry = revolved(profile, (radius, y, a) =>
+    radius * fluteFactor(a) * (1 + c.wobble * Math.cos(3 * a + 0.7)));
+  const mesh = foodMesh('caramelMesh', geometry, {
+    color: c.color, roughness: c.roughness,
+    clearcoat: c.clearcoat, clearcoatRoughness: c.clearcoatRoughness,
+  });
+  mesh.position.y = p.height / 2;
   return mesh;
 }
