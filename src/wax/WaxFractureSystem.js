@@ -1,92 +1,107 @@
 import * as THREE from 'three';
 import { CONFIG, waxProperties } from '../config.js';
+import {createIceCracks} from './IceCracks.js';
+import {createEnvelope} from './createEnvelope.js';
 
 export class WaxFractureSystem {
-  constructor(meshes) {
-    this.pieces=[]; this.sources=new Map(); this.properties=waxProperties();
-    for(const mesh of meshes) this.create(mesh,CONFIG.wax.fragments[mesh.name] || 3);
+  constructor(meshes,parent=meshes[0].parent) {
+    this.parent=parent;this.meshes=meshes;this.properties=waxProperties();this.pieces=[];this.cracks=[];this.holes=[];this.sources=new Map();
+    const geometry=createEnvelope(meshes,parent);
+    this.base=geometry.attributes.position.array.slice();this.normals=geometry.attributes.normal.array.slice();
+    this.originalIndex=geometry.index.array.slice();this.removed=new Uint8Array(this.originalIndex.length/3);
+    this.shell=new THREE.Mesh(geometry,new THREE.MeshPhysicalMaterial({color:'#fff5db',transparent:true,opacity:this.properties.opacity,roughness:.28,clearcoat:.42,side:THREE.FrontSide,depthWrite:false}));
+    this.shell.name='continuousWaxEnvelope';this.shell.renderOrder=2;parent.add(this.shell);
+    parent.updateMatrixWorld(true);
+    const inverse=parent.matrixWorld.clone().invert(),v=new THREE.Vector3();
+    for(const source of meshes){
+      const p=source.geometry.attributes.position,m=inverse.clone().multiply(source.matrixWorld),rest=new Float32Array(p.count*3);
+      for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m);v.toArray(rest,i*3);}
+      this.sources.set(source,{rest,mask:new Float32Array(p.count)});
+    }
+    this.setThickness(CONFIG.wax.thickness);
   }
-  create(source, count) {
-    const g=source.geometry, p=g.attributes.position, normals=g.attributes.normal, index=g.index.array;
-    const centers=[];
-    for(let i=0;i<index.length;i+=3) {
-      const c=new THREE.Vector3();for(let a=0;a<3;a++)c.add(new THREE.Vector3().fromBufferAttribute(p,index[i+a]));centers.push(c.multiplyScalar(1/3));
-    }
-    // Farthest-point seeds create deterministic, spatially coherent irregular patches.
-    const seeds=[centers[Math.floor(centers.length*.37)].clone()], distances=new Float64Array(centers.length).fill(Infinity);
-    while(seeds.length<count) {
-      let far=0;
-      for(let i=0;i<centers.length;i++) {distances[i]=Math.min(distances[i],centers[i].distanceToSquared(seeds.at(-1)));if(distances[i]>distances[far])far=i;}
-      seeds.push(centers[far].clone());
-    }
-    const groups=Array.from({length:count},()=>[]), mapping=new Uint16Array(centers.length);
-    for(let i=0;i<centers.length;i++) {
-      let best=0,d=Infinity;for(let s=0;s<count;s++){const v=centers[i].distanceToSquared(seeds[s]);if(v<d){d=v;best=s;}}
-      groups[best].push(i);mapping[i]=this.pieces.length+best;
-    }
-    const vertexPieces=Array.from({length:p.count},()=>new Set());
-    for(let face=0;face<mapping.length;face++)for(let a=0;a<3;a++)vertexPieces[index[face*3+a]].add(mapping[face]);
-    this.sources.set(source,{mapping,vertexPieces});
-    for(let s=0;s<count;s++) {
-      const faces=groups[s], edges=new Map(), positions=[], ns=[], outerCount=faces.length*3;
-      const center=new THREE.Vector3();for(const face of faces)center.add(centers[face]);center.divideScalar(faces.length||1);
-      for(const face of faces) {
-        for(let a=0;a<3;a++) {
-          const v=index[face*3+a];positions.push(p.getX(v)-center.x,p.getY(v)-center.y,p.getZ(v)-center.z);ns.push(normals.getX(v),normals.getY(v),normals.getZ(v));
-          const b=index[face*3+(a+1)%3],key=Math.min(v,b)+':'+Math.max(v,b);
-          if(edges.has(key))edges.delete(key);else edges.set(key,[v,b]);
-        }
-      }
-      // Edge skirts give fragments a real thickness without a Boolean operation.
-      const rims=[];
-      for(const [a,b] of edges.values()) for(const [v,outer] of [[a,1],[a,0],[b,1],[b,1],[a,0],[b,0]]) {
-        positions.push(p.getX(v)-center.x,p.getY(v)-center.y,p.getZ(v)-center.z);
-        ns.push(normals.getX(v)*outer,normals.getY(v)*outer,normals.getZ(v)*outer);
-      }
-      const geom=new THREE.BufferGeometry();geom.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-      const material=new THREE.MeshPhysicalMaterial({color:'#fff8df',transparent:true,opacity:this.properties.opacity,roughness:0.3,metalness:0,clearcoat:0.38,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
-      const shell=new THREE.Mesh(geom,material);shell.position.copy(center);source.add(shell);shell.renderOrder=2;
-      const crackPositions=[];
-      for(const [a,b] of edges.values()) for(const v of [a,b]) {crackPositions.push(p.getX(v)-center.x,p.getY(v)-center.y,p.getZ(v)-center.z);rims.push(normals.getX(v),normals.getY(v),normals.getZ(v));}
-      const crackGeo=new THREE.BufferGeometry();crackGeo.setAttribute('position',new THREE.Float32BufferAttribute(crackPositions,3));
-      const crack=new THREE.LineSegments(crackGeo,new THREE.LineBasicMaterial({color:'#8c6440',transparent:true,opacity:0.65,depthWrite:false}));crack.visible=false;shell.add(crack);
-      const piece={source,shell,crack,center,base:Float32Array.from(positions),normals:Float32Array.from(ns),crackBase:Float32Array.from(crackPositions),crackNormals:Float32Array.from(rims),outerCount,damage:0,state:0,velocity:new THREE.Vector3(),spin:new THREE.Vector3(),age:0};
-      this.pieces.push(piece);this.resize(piece);
-    }
+  setThickness(value) {
+    CONFIG.wax.thickness=value;this.properties=waxProperties(value);
+    const p=this.shell.geometry.attributes.position;
+    for(let i=0;i<p.array.length;i++)p.array[i]=this.base[i]+this.normals[i]*this.properties.offset;
+    p.needsUpdate=true;this.shell.geometry.computeBoundingSphere();this.shell.material.opacity=this.properties.opacity;
+    for(const c of this.cracks){this.clearCrack(c);c.lines=createIceCracks(this.shell,this.parent,c.point,c.normal,c.radius);}
   }
-  resize(piece) {
-    const pos=piece.shell.geometry.attributes.position, cp=piece.crack.geometry.attributes.position,o=this.properties.offset;
-    for(let i=0;i<pos.array.length;i++)pos.array[i]=piece.base[i]+piece.normals[i]*o;
-    for(let i=0;i<cp.array.length;i++)cp.array[i]=piece.crackBase[i]+piece.crackNormals[i]*(o+0.002);
-    pos.needsUpdate=cp.needsUpdate=true;piece.shell.geometry.computeVertexNormals();piece.shell.geometry.computeBoundingSphere();piece.crack.geometry.computeBoundingSphere();piece.shell.material.opacity=this.properties.opacity;
+  clearCrack(crack){crack.lines.removeFromParent();crack.lines.geometry.dispose();crack.lines.material.dispose();}
+  tap(hit){
+    if(hit.object!==this.shell)return null;
+    const point=this.parent.worldToLocal(hit.point.clone()),normal=(hit.normal||hit.face.normal).clone().normalize();
+    const existing=this.cracks.find(c=>c.point.distanceTo(point)<c.radius*.92&&c.normal.dot(normal)>.25);
+    if(existing){
+      const centered={...hit,point:this.parent.localToWorld(existing.point.clone()),face:{normal:existing.normal}};
+      this.breakAt(centered);
+      this.clearCrack(existing);this.cracks.splice(this.cracks.indexOf(existing),1);return 'broken';
+    }
+    const radius=this.properties.breakRadius;
+    const lines=createIceCracks(this.shell,this.parent,point,normal,radius);
+    this.cracks.push({point,normal,radius,lines});return 'cracked';
   }
-  setThickness(value) {CONFIG.wax.thickness=value;this.properties=waxProperties(value);for(const piece of this.pieces)this.resize(piece);}
-  pieceAt(hit) {return this.pieces[this.sources.get(hit.object)?.mapping[hit.faceIndex]];}
-  exposed(source, vertex) {return [...this.sources.get(source).vertexPieces[vertex]].every(i=>this.pieces[i].state===3);}
-  damage(hit,pressure,dt) {
-    const piece=this.pieceAt(hit);if(!piece || piece.state===3)return false;
-    piece.damage+=pressure*dt*this.properties.damageRate/this.properties.fractureThreshold;
-    piece.state=piece.damage>.48?2:piece.damage>.16?1:0;
-    piece.crack.visible=piece.state===2;
-    piece.shell.material.color.set(piece.state ? '#fffdf2':'#fff8df');
-    if(piece.damage>=1) {
-      piece.state=3;piece.crack.visible=false;
-      const normal=hit.face.normal.clone().normalize();
-      piece.velocity.copy(normal).multiplyScalar(this.properties.impulse);piece.velocity.y+=0.25;
-      const seed=this.pieces.indexOf(piece)+1;piece.spin.set(Math.sin(seed)*2,Math.cos(seed*2)*2,Math.sin(seed*3)*2);
-      piece.shell.material.opacity=Math.min(0.9,this.properties.opacity+0.18);
+  exposed(source,vertex){return this.sources.get(source).mask[vertex];}
+  // All wedges are generated only on impact, about the actual pointer contact.
+  breakAt(hit) {
+    if(hit.object!==this.shell)return false;
+    const point=this.parent.worldToLocal(hit.point.clone()),normal=hit.face.normal.clone().normalize(),radius=this.properties.breakRadius;
+    const tangent=new THREE.Vector3().crossVectors(normal,Math.abs(normal.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0)).normalize();
+    const bitangent=new THREE.Vector3().crossVectors(normal,tangent),groups=Array.from({length:8},()=>[]);
+    const p=this.shell.geometry.attributes.position,n=this.shell.geometry.attributes.normal,c=new THREE.Vector3(),d=new THREE.Vector3(),fn=new THREE.Vector3();
+    let removed=0;
+    for(let f=0;f<this.removed.length;f++){
+      if(this.removed[f])continue;c.set(0,0,0);fn.set(0,0,0);
+      for(let k=0;k<3;k++){const id=this.originalIndex[f*3+k];c.add(d.fromBufferAttribute(p,id));fn.add(d.fromBufferAttribute(n,id));}
+      c.multiplyScalar(1/3);d.subVectors(c,point);const depth=d.dot(normal);if(Math.abs(depth)>radius*.75||fn.normalize().dot(normal)<.05)continue;
+      const x=d.dot(tangent),y=d.dot(bitangent),angle=Math.atan2(y,x),edge=radius*(1+.09*Math.sin(angle*7+.3)+.055*Math.sin(angle*11));
+      if(x*x+y*y>edge*edge)continue;
+      this.removed[f]=1;removed++;
+      groups[Math.min(7,Math.floor((angle+Math.PI)/(Math.PI*2)*8))].push(f);
+    }
+    if(!removed)return false;
+    const index=this.shell.geometry.index;
+    // BufferAttribute's itemSize is 1 for an index; write triangle slots directly.
+    for(let f=0;f<this.removed.length;f++)if(this.removed[f])index.array.fill(0,f*3,f*3+3);
+    index.needsUpdate=true;
+    for(const faces of groups)if(faces.length)this.fragment(faces,point,normal,tangent,bitangent);
+    this.holes.push({point,normal,radius});
+    // Expose a smooth field based on the original filling surface, so deep dents
+    // never become locked again and intact wax keeps supporting adjacent filling.
+    for(const {rest,mask} of this.sources.values())for(let i=0;i<mask.length;i++){
+      d.fromArray(rest,i*3).sub(point);const depth=d.dot(normal);
+      if(depth>.12||depth< -radius*1.15)continue;
+      const lateral=Math.sqrt(Math.max(0,d.lengthSq()-depth*depth));
+      const weight=1-THREE.MathUtils.smoothstep(lateral,radius*.55,radius*.96);
+      mask[i]=Math.max(mask[i],weight);
     }
     return true;
   }
-  update(dt) {
-    for(const p of this.pieces)if(p.state===3&&p.shell.visible) {
-      p.age+=dt;p.velocity.y-=2.4*dt;p.shell.position.addScaledVector(p.velocity,dt);
-      p.shell.rotation.x+=p.spin.x*dt;p.shell.rotation.y+=p.spin.y*dt;p.shell.rotation.z+=p.spin.z*dt;
-      // Floor height expressed in the source mesh's local coordinates.
-      const ground=-CONFIG.pudding.height/2-p.source.getWorldPosition(new THREE.Vector3()).y+0.035;
-      if(p.shell.position.y<ground){p.shell.position.y=ground;p.velocity.set(0,0,0);p.spin.multiplyScalar(Math.exp(-dt*10));}
-      if(p.age>5){p.shell.material.opacity=Math.max(0,p.shell.material.opacity-dt*.6);if(p.shell.material.opacity===0)p.shell.visible=false;}
+  fragment(faces,point,normal) {
+    const p=this.shell.geometry.attributes.position,n=this.shell.geometry.attributes.normal,center=new THREE.Vector3(),v=new THREE.Vector3(),edges=new Map();
+    let total=0;for(const f of faces)for(let k=0;k<3;k++){center.add(v.fromBufferAttribute(p,this.originalIndex[f*3+k]));total++;}center.divideScalar(total);
+    const positions=[],normals=[];
+    for(const f of faces)for(let k=0;k<3;k++){
+      const a=this.originalIndex[f*3+k],b=this.originalIndex[f*3+(k+1)%3];v.fromBufferAttribute(p,a).sub(center);positions.push(v.x,v.y,v.z);normals.push(n.getX(a),n.getY(a),n.getZ(a));
+      const key=Math.min(a,b)+':'+Math.max(a,b);if(edges.has(key))edges.delete(key);else edges.set(key,[a,b]);
+    }
+    const thickness=this.properties.offset*.75;
+    for(const [a,b] of edges.values())for(const [id,inner] of [[a,0],[a,1],[b,0],[b,0],[a,1],[b,1]]){
+      v.fromBufferAttribute(p,id).sub(center);if(inner)v.addScaledVector(new THREE.Vector3().fromBufferAttribute(n,id),-thickness);positions.push(v.x,v.y,v.z);normals.push(n.getX(id),n.getY(id),n.getZ(id));
+    }
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+    const shell=new THREE.Mesh(geometry,new THREE.MeshPhysicalMaterial({color:'#fff4d8',roughness:.32,transparent:true,opacity:.78,side:THREE.DoubleSide,depthWrite:false}));shell.position.copy(center);this.parent.add(shell);
+    const outward=center.clone().sub(point).normalize();const velocity=outward.multiplyScalar(.025).addScaledVector(normal,.035);velocity.y-=.04;
+    const seed=this.pieces.length+1;this.pieces.push({shell,velocity,spin:new THREE.Vector3(Math.sin(seed)*3,Math.cos(seed*2)*3,Math.sin(seed*3)*3),age:0});
+    while(this.pieces.length>96)this.disposePiece(this.pieces.shift());
+  }
+  disposePiece(p){p.shell.removeFromParent();p.shell.geometry.dispose();p.shell.material.dispose();}
+  update(dt){
+    for(let i=this.pieces.length-1;i>=0;i--){const p=this.pieces[i];p.age+=dt;p.velocity.y-=3.5*dt;p.shell.position.addScaledVector(p.velocity,dt);p.shell.rotation.x+=p.spin.x*dt;p.shell.rotation.y+=p.spin.y*dt;p.shell.rotation.z+=p.spin.z*dt;
+      if(p.age>.35)p.shell.material.opacity=Math.max(0,.78-(p.age-.35)*1.1);
+      if(p.age>1.1){this.disposePiece(p);this.pieces.splice(i,1);}
     }
   }
-  reset() {for(const p of this.pieces){p.state=0;p.damage=0;p.age=0;p.velocity.set(0,0,0);p.spin.set(0,0,0);p.shell.position.copy(p.center);p.shell.rotation.set(0,0,0);p.shell.visible=true;p.crack.visible=false;p.shell.material.color.set('#fff8df');p.shell.material.opacity=this.properties.opacity;}}
+  peelAll(){for(const c of this.cracks)this.clearCrack(c);this.cracks=[];this.removed.fill(1);this.shell.geometry.index.array.fill(0);this.shell.geometry.index.needsUpdate=true;for(const source of this.sources.values())source.mask.fill(1);}
+  reset(){for(const c of this.cracks)this.clearCrack(c);this.cracks=[];for(const p of this.pieces)this.disposePiece(p);this.pieces=[];this.holes=[];this.removed.fill(0);this.shell.geometry.index.array.set(this.originalIndex);this.shell.geometry.index.needsUpdate=true;for(const source of this.sources.values())source.mask.fill(0);}
 }

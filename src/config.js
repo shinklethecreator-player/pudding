@@ -36,11 +36,14 @@ export function puddingRimRadius(angle) {
   return CONFIG.pudding.topRadius * CONFIG.pudding.rimRadiusFactor * fluteFactor(angle);
 }
 
-Object.assign(CONFIG.pudding, { deformationRadius: 0.55, strength: 0.72, softness: 0.8, plasticity: 0.7, yieldThreshold: 0.34, recovery: 0.65, dragInfluence: 0.35, maxDent: 0.5, smoothing: 0.12 });
-Object.assign(CONFIG.cream, { deformationRadius: 0.58, strength: 0.9, softness: 1.25, plasticity: 0.86, yieldThreshold: 0.22, recovery: 0.34, dragInfluence: 0.65, maxDent: 0.48, smoothing: 0.16 });
-CONFIG.wax = { thickness: 0.06, minThickness: 0.01, maxThickness: 0.20, fragments: { puddingMesh: 54, caramelMesh: 16, creamMesh: 20, cherryMesh: 9, cherryStemMesh: 3 } };
-CONFIG.interaction = { holdPressureSpeed: 0.5, dragPressureScale: 0.012, maxPressure: 1 };
+Object.assign(CONFIG.pudding, { deformationRadius: 1.0, strength: 1.3, softness: 1.1, plasticity: 0.48, yieldThreshold: 0.28, recovery: 1.35, dragInfluence: 0.8, maxDent: 0.78, smoothing: 0.38 });
+Object.assign(CONFIG.cream, { deformationRadius: 0.95, strength: 1.6, softness: 1.5, plasticity: 0.65, yieldThreshold: 0.18, recovery: 0.9, dragInfluence: 1.05, maxDent: 0.64, smoothing: 0.4 });
+CONFIG.wax = { thickness: 0.06, minThickness: 0.01, maxThickness: 0.20 };
+CONFIG.interaction = { holdPressureSpeed: 0.7, dragPressureScale: 0.012, maxPressure: 1 };
 export function waxProperties(thickness = CONFIG.wax.thickness) {
   const t = Math.max(0, Math.min(1, (thickness - 0.01) / 0.19));
-  return { offset: 0.006 + thickness * 0.24, opacity: 0.25 + t * 0.42, fractureThreshold: 0.42 + t * 0.95, damageRate: 1.3 - t * 0.65, impulse: 0.65 + t * 0.5 };
+  return { offset: 0.01 + thickness * 0.23, opacity: 0.22 + t * 0.28, breakRadius: 0.84 - t * 0.24, impulse: 0.85 + t * 0.35 };
 }
+
+CONFIG.caramelClay={...CONFIG.pudding,softness:1.2,plasticity:.95};
+CONFIG.cherryClay={...CONFIG.cream,softness:1.35,deformationRadius:.85};
