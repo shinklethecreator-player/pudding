@@ -1,0 +1,145 @@
+import * as THREE from 'three';
+import { CONFIG } from '../config.js';
+
+export const smoothstep = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// A smooth closed surface of revolution, with welded vertices and capped poles.
+// Profiles run from bottom centre to top centre.
+export function revolved(profile) {
+  const curve = new THREE.SplineCurve(profile.map(([r, y]) => new THREE.Vector2(r, y)));
+  const points = curve.getPoints((profile.length - 1) * CONFIG.geometry.profileSubdivisions);
+  const n = CONFIG.geometry.radialSegments;
+  const positions = [0, points[0].y, 0], indices = [];
+  for (let j = 1; j < points.length - 1; j++) {
+    const { x: radius, y } = points[j];
+    for (let i = 0; i < n; i++) {
+      const a = i * Math.PI * 2 / n;
+      const r = Math.max(0, radius);
+      positions.push(r * Math.cos(a), y, r * Math.sin(a));
+    }
+  }
+  const rows = points.length - 2;
+  for (let i = 0; i < n; i++) indices.push(0, 1 + i, 1 + (i + 1) % n);
+  for (let j = 0; j < rows - 1; j++) {
+    for (let i = 0; i < n; i++) {
+      const a = 1 + j * n + i, b = 1 + j * n + (i + 1) % n;
+      indices.push(a, a + n, b, b, a + n, b + n);
+    }
+  }
+  const top = positions.length / 3;
+  positions.push(0, points.at(-1).y, 0);
+  for (let i = 0; i < n; i++) indices.push(1 + (rows - 1) * n + i, top, 1 + (rows - 1) * n + (i + 1) % n);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// Push every vertex along its own normal by fn(x, y, z). Normals are taken from the
+// undisplaced surface and recomputed afterwards, which is what lets a pattern defined
+// in world space — the melon-bread lattice — wrap correctly over a curved shell.
+export function displaceAlongNormal(geometry, fn) {
+  const position = geometry.attributes.position;
+  const normal = geometry.attributes.normal;
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i), y = position.getY(i), z = position.getZ(i);
+    const d = fn(x, y, z, i);
+    if (d === 0) continue;
+    position.setXYZ(i, x + normal.getX(i) * d, y + normal.getY(i) * d, z + normal.getZ(i) * d);
+  }
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// Per-vertex colour, written in the renderer's working space.
+export function paintVertices(geometry, fn) {
+  const position = geometry.attributes.position;
+  const colors = new Float32Array(position.count * 3);
+  const color = new THREE.Color();
+  for (let i = 0; i < position.count; i++) {
+    fn(position.getX(i), position.getY(i), position.getZ(i), i, color);
+    colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geometry;
+}
+
+// A sphere squashed and stretched per axis, optionally tapered toward +z (a snout).
+export function blob(radius, { length = 1, height = 1, taper = 0, segments = 56 } = {}) {
+  const geometry = new THREE.SphereGeometry(radius, segments, Math.round(segments * 0.7));
+  const p = geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i) * length;
+    const t = Math.max(0, z / (radius * length));
+    const pinch = 1 - taper * t * t;
+    p.setXYZ(i, x * pinch, y * height * pinch, z);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+// Drop an assembled part so its lowest point rests exactly on the base plane. Doing this
+// from the real bounding box — after rotation — is what keeps the model's underside flat
+// however the part's size or pitch is later retuned.
+export function seatOnBase(object, baseY = 0) {
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  object.position.y += baseY - box.min.y;
+  return object;
+}
+
+// A capsule lying along +z: a constant-radius barrel closed by a hemispherical cap at each
+// end, optionally squashed vertically. Unlike an ellipsoid its flanks stay parallel, so the
+// silhouette reads as a rounded cylinder rather than an egg.
+export function capsuleZ({ radius, straight, height = 1, radial = 72, capRings = 18, barrelRings = 8 }) {
+  const half = straight / 2, profile = [];
+  for (let i = 0; i <= capRings; i++) {
+    const a = (i / capRings) * Math.PI / 2;
+    profile.push([radius * Math.sin(a), -half - radius * Math.cos(a)]);
+  }
+  for (let i = 1; i < barrelRings; i++) profile.push([radius, -half + straight * (i / barrelRings)]);
+  for (let i = 0; i <= capRings; i++) {
+    const a = (i / capRings) * Math.PI / 2;
+    profile.push([radius * Math.cos(a), half + radius * Math.sin(a)]);
+  }
+
+  const rows = profile.length;
+  const positions = [0, 0, profile[0][1]], indices = [];
+  for (let j = 1; j < rows - 1; j++) {
+    const [r, z] = profile[j];
+    for (let i = 0; i < radial; i++) {
+      const a = i * Math.PI * 2 / radial;
+      positions.push(r * Math.cos(a), r * Math.sin(a) * height, z);
+    }
+  }
+  const bands = rows - 2;
+  for (let i = 0; i < radial; i++) indices.push(0, 1 + (i + 1) % radial, 1 + i);
+  for (let j = 0; j < bands - 1; j++) {
+    for (let i = 0; i < radial; i++) {
+      const a = 1 + j * radial + i, b = 1 + j * radial + (i + 1) % radial;
+      indices.push(a, b, a + radial, b, b + radial, a + radial);
+    }
+  }
+  const tip = positions.length / 3;
+  positions.push(0, 0, profile.at(-1)[1]);
+  for (let i = 0; i < radial; i++) indices.push(1 + (bands - 1) * radial + i, 1 + (bands - 1) * radial + (i + 1) % radial, tip);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+export function bakeMesh(name, geometry, material) {
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({ metalness: 0, ...material }));
+  mesh.name = name;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}

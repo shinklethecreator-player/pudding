@@ -106,7 +106,7 @@ export function setupScene(container, dessert) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     const size = box.getSize(new THREE.Vector3());
-    const vertical = size.y + size.z * 0.23;
+    const vertical = size.y + size.z * 0.5;
     const fit = Math.max(vertical, size.x / camera.aspect) /
       (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * CONFIG.camera.framing);
     controls.minDistance = fit * 0.6;
@@ -130,5 +130,20 @@ export function setupScene(container, dessert) {
     renderer.render(scene, camera);
   });
 
-  return { scene, renderer, camera, controls };
+  function setModel(model) {
+    box.setFromObject(model);
+    box.getCenter(target);
+    controls.target.copy(target);
+    const distance = frame();
+    camera.position.copy(target).addScaledVector(new THREE.Vector3(0, .65, 1).normalize(), distance);
+    controls.update();
+    controls.saveState();
+  }
+  new ResizeObserver(() => {
+    const fit = frame();
+    const offset = camera.position.clone().sub(controls.target).setLength(fit);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+  }).observe(container);
+  return { scene, renderer, camera, controls, setModel };
 }

@@ -55,7 +55,7 @@ export class PointerInteraction {
       }
       this.status.textContent='抓住不放，向外拉长 · 向内推拢';return;
     }
-    const hit=this.hit();if(!hit){this.previousMesh=null;this.status.textContent='移回布丁表面，继续揉捏';return;}
+    const hit=this.hit();if(!hit){this.previousMesh=null;this.status.textContent='移回模型表面，继续揉捏';return;}
     if(hit.object===this.wax.shell) {
       this.previousMesh=null;
       this.status.textContent='松开后点击蜡皮 · 一下裂开，再点碎开';return;
