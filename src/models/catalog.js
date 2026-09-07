@@ -7,6 +7,7 @@ import { CONFIG } from '../config.js';
 
 export const MODELS = [
   { id: 'pudding', label: '布丁', create: createDessert },
+  { id: 'jelly', label: '果冻布丁', create: createDessert },
   { id: 'turtle', label: '乌龟包', create: createTurtle },
   { id: 'baozi', label: '包子', create: createBun },
   { id: 'naruto', label: '鸣门卷', create: createSlice },
@@ -22,8 +23,8 @@ export function createModel(id) {
   const box = new THREE.Box3().setFromObject(source);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
-  const scale = id === 'pudding' ? 1 : 3.1 / Math.max(size.x, size.y, size.z);
-  const offset = id === 'pudding' ? new THREE.Vector3() :
+  const scale = ['pudding', 'jelly'].includes(id) ? 1 : 3.1 / Math.max(size.x, size.y, size.z);
+  const offset = ['pudding', 'jelly'].includes(id) ? new THREE.Vector3() :
     new THREE.Vector3(-center.x * scale, -CONFIG.pudding.height / 2 - box.min.y * scale, -center.z * scale);
   const normalize = new THREE.Matrix4().makeTranslation(...offset.toArray())
     .multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
@@ -40,11 +41,20 @@ export function createModel(id) {
     mesh.receiveShadow = true;
     result.add(mesh);
   });
+  if (id === 'jelly') result.traverse(mesh => {
+    if (!mesh.isMesh) return;
+    Object.assign(mesh.material, { transmission: .94, thickness: 1.15, ior: 1.36, roughness: .09, clearcoat: 1, clearcoatRoughness: .08, attenuationDistance: 3.2 });
+    mesh.material.attenuationColor.copy(mesh.material.color);
+    mesh.material.needsUpdate = true;
+    mesh.castShadow = false;
+  });
+  applyPuddingColors(result, id);
   disposeModel(source);
   return result;
 }
 
 export function clayConfig(mesh, id) {
+  if (id === 'jelly') return { ...CONFIG.pudding, plasticity: 0, strength: 1.65, softness: 1.3, deformationRadius: 1.15, maxDent: 1.05 };
   if (id !== 'pudding') return CONFIG.pudding;
   return mesh.name === 'puddingMesh' ? CONFIG.pudding :
     mesh.name === 'caramelMesh' ? CONFIG.caramelClay :
@@ -57,4 +67,18 @@ export function disposeModel(group) {
     object.geometry.dispose();
     for (const material of [].concat(object.material)) material.dispose();
   });
+}
+
+export const puddingColors = {
+  pudding: { body: '#ffc94f', topping: '#a24d27' },
+  jelly: { body: '#82dcce', topping: '#f4a7bd' },
+};
+export function applyPuddingColors(model, id) {
+  const colors = puddingColors[id];
+  if (!colors) return;
+  for (const [name, color] of [['puddingMesh', colors.body], ['caramelMesh', colors.topping]]) {
+    const mesh = model.getObjectByName(name);
+    mesh.material.color.set(color);
+    mesh.material.attenuationColor.copy(mesh.material.color);
+  }
 }

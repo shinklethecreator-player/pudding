@@ -23,7 +23,7 @@ export class ClayAssembly {
     const worldNormal=(hit.normal||hit.face.normal).clone().transformDirection(hit.object.matrixWorld);
     for(const [mesh,d] of this.deformers){const point=mesh.worldToLocal(hit.point.clone());const normal=worldNormal.clone().transformDirection(mesh.matrixWorld.clone().invert());d.press(point,normal,pressure,dt,v=>this.wax.exposed(mesh,v));}
   }
-  endGrab(){this.grab=null;}
+  endGrab(){this.grab=null;for(const d of this.deformers.values())d.endPress?.();}
   knead(){
     this.endGrab();this.wax.peelAll();
     const box=new THREE.Box3();for(const [mesh,d] of this.deformers)for(let i=0;i<d.position.count;i++){this.v.fromBufferAttribute(d.position,i);mesh.localToWorld(this.v);box.expandByPoint(this.v);}

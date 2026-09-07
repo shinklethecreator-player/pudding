@@ -2,12 +2,13 @@ import './style.css';
 import * as THREE from 'three';
 import { setupScene } from './scene/setupScene.js';
 import { CONFIG } from './config.js';
+import { JellyDeformer } from './deformation/JellyDeformer.js';
 import { ClayDeformer } from './deformation/ClayDeformer.js';
 import { WaxFractureSystem } from './wax/WaxFractureSystem.js';
 import { ClayAssembly } from './deformation/ClayAssembly.js';
 import { TactileAudio } from './audio/TactileAudio.js';
 import { PointerInteraction } from './interaction/PointerInteraction.js';
-import { MODELS, createModel, clayConfig, disposeModel } from './models/catalog.js';
+import { MODELS, createModel, clayConfig, disposeModel, puddingColors, applyPuddingColors } from './models/catalog.js';
 import { renderModelPreviews } from './models/previews.js';
 
 let currentModel = 'pudding';
@@ -18,7 +19,7 @@ const audio = new TactileAudio();
 let meshes, deformers, wax, assembly;
 function prepareModel() {
   meshes = dessert.children.filter(object => object.isMesh);
-  deformers = new Map(meshes.map(mesh => [mesh, new ClayDeformer(mesh, clayConfig(mesh, currentModel))]));
+  deformers = new Map(meshes.map(mesh => [mesh, new (currentModel === 'jelly' ? JellyDeformer : ClayDeformer)(mesh, clayConfig(mesh, currentModel))]));
   wax = new WaxFractureSystem(meshes, dessert);
   assembly = new ClayAssembly(deformers, wax);
 }
@@ -49,6 +50,7 @@ function selectModel(id) {
   const label = MODELS.find(model => model.id === id).label;
   document.querySelector('#scene').setAttribute('aria-label', `可揉捏的三维${label}`);
   document.querySelector('#status').textContent = `${label} · 点一下冰裂，再点一下碎开`;
+  syncColors();
   exposeState();
 }
 const picker = document.createElement('nav');
@@ -67,6 +69,22 @@ for (const { id, label } of MODELS) {
   picker.append(button);
 }
 document.body.append(picker);
+const colorsPanel = document.createElement('fieldset');
+colorsPanel.className = 'pudding-colors';
+colorsPanel.innerHTML = '<legend>布丁配色</legend><label>主体<input type="color" name="body" aria-label="布丁主体颜色"></label><label>顶层<input type="color" name="topping" aria-label="焦糖顶层颜色"></label>';
+document.querySelector('.panel').insertBefore(colorsPanel, document.querySelector('.play-actions'));
+function syncColors() {
+  const colors = puddingColors[currentModel];
+  colorsPanel.hidden = !colors;
+  document.body.classList.toggle('has-colors', Boolean(colors));
+  if (colors) for (const input of colorsPanel.querySelectorAll('input')) input.value = colors[input.name];
+}
+colorsPanel.addEventListener('input', event => {
+  if (!puddingColors[currentModel]) return;
+  puddingColors[currentModel][event.target.name] = event.target.value;
+  applyPuddingColors(dessert, currentModel);
+});
+syncColors();
 // Let the primary canvas appear before rendering the small model portraits.
 requestAnimationFrame(() => {
   const previews = renderModelPreviews();

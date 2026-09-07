@@ -10,6 +10,7 @@ export function renderModelPreviews() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.04;
   const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#fff8ee');
   scene.add(new THREE.HemisphereLight('#fff8ef', '#bba790', 2));
   const key = new THREE.DirectionalLight('#fff9ef', 3.2);
   key.position.set(-3, 6, 5);
