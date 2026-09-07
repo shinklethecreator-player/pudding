@@ -43,9 +43,15 @@ export function createModel(id) {
   });
   if (id === 'jelly') result.traverse(mesh => {
     if (!mesh.isMesh) return;
-    Object.assign(mesh.material, { transmission: 1, thickness: mesh.name === 'puddingMesh' ? 2.2 : mesh.name === 'caramelMesh' ? .3 : .65, ior: 1.38, roughness: .025, clearcoat: 1, clearcoatRoughness: .025, attenuationDistance: 3.8, envMapIntensity: 3.5, metalness: 0, vertexColors: false });
+    Object.assign(mesh.material, { transmission: 1, thickness: mesh.name === 'puddingMesh' ? 2.2 : mesh.name === 'caramelMesh' ? .3 : .65, ior: 1.46, roughness: .025, clearcoat: 1, clearcoatRoughness: .025, attenuationDistance: 2.6, envMapIntensity: .8, metalness: 0, vertexColors: false });
     mesh.material.attenuationColor.copy(mesh.material.color);
-    mesh.material.color.set('#ffffff').lerp(mesh.material.attenuationColor, .045);
+    mesh.material.color.set('#ffffff').lerp(mesh.material.attenuationColor, .12);
+    if (mesh.name === 'cherryMesh' || mesh.name === 'cherryStemMesh') {
+      mesh.material.color.copy(mesh.material.attenuationColor);
+      mesh.material.attenuationDistance = mesh.name === 'cherryMesh' ? .22 : .04;
+      mesh.material.thickness = mesh.name === 'cherryMesh' ? .65 : .05;
+      mesh.material.clearcoat = .3;
+    }
     mesh.material.needsUpdate = true;
     mesh.castShadow = false;
   });

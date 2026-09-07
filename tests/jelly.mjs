@@ -10,6 +10,9 @@ assert.equal(model.getObjectByName('puddingMesh').material.attenuationColor.getH
 assert.equal(model.getObjectByName('caramelMesh').material.attenuationColor.getHexString(),'ee88aa');
 assert.equal(createModel('jelly').getObjectByName('puddingMesh').material.attenuationColor.getHexString(),'55bbff');
 assert.equal(createModel('pudding').getObjectByName('puddingMesh').material.attenuationColor.getHexString(),'ffc94f');
+const cherry=model.getObjectByName('cherryMesh').material;
+assert(cherry.color.r > cherry.color.g*3 && cherry.color.r > cherry.color.b*2, 'cherry stays saturated red');
+assert(cherry.attenuationDistance < .3, 'small cherry has enough color absorption');
 const mesh=model.getObjectByName('puddingMesh'), d=new JellyDeformer(mesh,clayConfig(mesh,'jelly'));
 d.beginPress();
 const point=new THREE.Vector3(0,0,1.35),normal=new THREE.Vector3(0,0,1);

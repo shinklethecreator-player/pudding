@@ -81,6 +81,37 @@ export function setupScene(container, dessert) {
   contact.renderOrder = -1;
   scene.add(contact);
 
+  // An opaque studio surface supplies real contrast to the transmission buffer.
+  // Against a uniform white background refraction has nothing visible to bend.
+  const opticalCanvas = document.createElement('canvas');
+  opticalCanvas.width = opticalCanvas.height = 512;
+  const opticalContext = opticalCanvas.getContext('2d');
+  opticalContext.fillStyle = '#faf8f4';
+  opticalContext.fillRect(0, 0, 512, 512);
+  const glow = opticalContext.createRadialGradient(256, 256, 5, 256, 256, 230);
+  glow.addColorStop(0, '#faffff');
+  glow.addColorStop(.35, '#d7e9e5');
+  glow.addColorStop(.62, '#e8eeeb');
+  glow.addColorStop(1, '#faf8f4');
+  opticalContext.fillStyle = glow;
+  opticalContext.fillRect(0, 0, 512, 512);
+  for (const x of [213, 289]) {
+    const band = opticalContext.createLinearGradient(x - 12, 0, x + 12, 0);
+    band.addColorStop(0, 'rgba(102,148,144,0)');
+    band.addColorStop(.5, 'rgba(102,148,144,.22)');
+    band.addColorStop(1, 'rgba(102,148,144,0)');
+    opticalContext.fillStyle = band;
+    opticalContext.fillRect(x - 12, 170, 24, 172);
+  }
+  const opticalTexture = new THREE.CanvasTexture(opticalCanvas);
+  opticalTexture.colorSpace = THREE.SRGBColorSpace;
+  const opticalFloor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10),
+    new THREE.MeshBasicMaterial({ map: opticalTexture }));
+  opticalFloor.rotation.x = -Math.PI / 2;
+  opticalFloor.position.y = floorY + .001;
+  opticalFloor.visible = false;
+  scene.add(opticalFloor);
+
   const camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, 1, 0.1, 100);
   const box = new THREE.Box3().setFromObject(dessert);
   const target = new THREE.Vector3().fromArray(CONFIG.camera.target);
@@ -131,6 +162,17 @@ export function setupScene(container, dessert) {
   });
 
   function setModel(model) {
+    const jelly = model.name === 'jellyGroup';
+    opticalFloor.visible = jelly;
+    contact.visible = !jelly;
+    // Explicit environment maps give jelly crisp studio reflections without
+    // washing out the cherry through an excessive global light multiplier.
+    model.traverse(mesh => {
+      if (jelly && mesh.isMesh && mesh.material.transmission > 0) {
+        mesh.material.envMap = environment.texture;
+        mesh.material.needsUpdate = true;
+      }
+    });
     box.setFromObject(model);
     box.getCenter(target);
     controls.target.copy(target);
