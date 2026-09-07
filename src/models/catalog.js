@@ -43,8 +43,9 @@ export function createModel(id) {
   });
   if (id === 'jelly') result.traverse(mesh => {
     if (!mesh.isMesh) return;
-    Object.assign(mesh.material, { transmission: .94, thickness: 1.15, ior: 1.36, roughness: .09, clearcoat: 1, clearcoatRoughness: .08, attenuationDistance: 3.2 });
+    Object.assign(mesh.material, { transmission: 1, thickness: mesh.name === 'puddingMesh' ? 2.2 : mesh.name === 'caramelMesh' ? .3 : .65, ior: 1.38, roughness: .025, clearcoat: 1, clearcoatRoughness: .025, attenuationDistance: 3.8, envMapIntensity: 3.5, metalness: 0, vertexColors: false });
     mesh.material.attenuationColor.copy(mesh.material.color);
+    mesh.material.color.set('#ffffff').lerp(mesh.material.attenuationColor, .045);
     mesh.material.needsUpdate = true;
     mesh.castShadow = false;
   });
@@ -71,7 +72,7 @@ export function disposeModel(group) {
 
 export const puddingColors = {
   pudding: { body: '#ffc94f', topping: '#a24d27' },
-  jelly: { body: '#82dcce', topping: '#f4a7bd' },
+  jelly: { body: '#63c7b7', topping: '#91d8cb' },
 };
 export function applyPuddingColors(model, id) {
   const colors = puddingColors[id];
@@ -80,5 +81,6 @@ export function applyPuddingColors(model, id) {
     const mesh = model.getObjectByName(name);
     mesh.material.color.set(color);
     mesh.material.attenuationColor.copy(mesh.material.color);
+    if (id === 'jelly') mesh.material.color.set('#ffffff').lerp(mesh.material.attenuationColor, .045);
   }
 }

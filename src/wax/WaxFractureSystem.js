@@ -5,11 +5,11 @@ import {createEnvelope} from './createEnvelope.js';
 
 export class WaxFractureSystem {
   constructor(meshes,parent=meshes[0].parent) {
-    this.parent=parent;this.meshes=meshes;this.properties=waxProperties();this.pieces=[];this.cracks=[];this.holes=[];this.sources=new Map();
+    this.clearCoating=parent.name==='jellyGroup';this.parent=parent;this.meshes=meshes;this.properties=waxProperties();this.pieces=[];this.cracks=[];this.holes=[];this.sources=new Map();
     const geometry=createEnvelope(meshes,parent);
     this.base=geometry.attributes.position.array.slice();this.normals=geometry.attributes.normal.array.slice();
     this.originalIndex=geometry.index.array.slice();this.removed=new Uint8Array(this.originalIndex.length/3);
-    this.shell=new THREE.Mesh(geometry,new THREE.MeshPhysicalMaterial({color:'#fff5db',transparent:true,opacity:this.properties.opacity,roughness:.28,clearcoat:.42,side:THREE.FrontSide,depthWrite:false}));
+    this.shell=new THREE.Mesh(geometry,new THREE.MeshPhysicalMaterial({color:this.clearCoating?'#ffffff':'#fff5db',transparent:true,opacity:this.properties.opacity,roughness:this.clearCoating?.035:.28,clearcoat:this.clearCoating?1:.42,side:THREE.FrontSide,depthWrite:false}));
     this.shell.name='continuousWaxEnvelope';this.shell.renderOrder=2;parent.add(this.shell);
     parent.updateMatrixWorld(true);
     const inverse=parent.matrixWorld.clone().invert(),v=new THREE.Vector3();
@@ -24,7 +24,7 @@ export class WaxFractureSystem {
     CONFIG.wax.thickness=value;this.properties=waxProperties(value);
     const p=this.shell.geometry.attributes.position;
     for(let i=0;i<p.array.length;i++)p.array[i]=this.base[i]+this.normals[i]*this.properties.offset;
-    p.needsUpdate=true;this.shell.geometry.computeBoundingSphere();this.shell.material.opacity=this.properties.opacity;
+    p.needsUpdate=true;this.shell.geometry.computeBoundingSphere();this.shell.material.opacity=this.properties.opacity*(this.clearCoating?.16:1);
     for(const c of this.cracks){this.clearCrack(c);c.lines=createIceCracks(this.shell,this.parent,c.point,c.normal,c.radius);}
   }
   clearCrack(crack){crack.lines.removeFromParent();crack.lines.geometry.dispose();crack.lines.material.dispose();}
